@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Myntra RA · Control Hub</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:#f8fafc;color:#1e293b}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:#f1f5f9}
+::-webkit-scrollbar-thumb{background:#e11d74;border-radius:3px}
+input,select,textarea{font-family:'Inter',sans-serif}
+table{border-collapse:collapse;width:100%}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@media print{.no-print{display:none!important}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useMemo,useEffect,useCallback}=React;
+
+// ── Supabase ──────────────────────────────────────────────────────────────
+const SB_URL="https://fhmjyavhnkrioqamtuvw.supabase.co";
+const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZobWp5YXZobmtyaW9xYW10dXZ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyMTAxNTYsImV4cCI6MjA4ODc4NjE1Nn0.8FCECJ_vIvCimJm4d8a-6y_cIHjO9knEwCnJw-azrXo";
+const H={"Content-Type":"application/json","apikey":SB_KEY,"Authorization":`Bearer ${SB_KEY}`};
+async function dbGet(t){const r=await fetch(`${SB_URL}/rest/v1/${t}?select=*&order=created_at.desc`,{headers:{...H}});if(!r.ok)throw new Error(await r.text());return r.json();}
+async function dbInsert(t,row){const r=await fetch(`${SB_URL}/rest/v1/${t}`,{method:"POST",headers:{...H,"Prefer":"return=representation"},body:JSON.stringify(row)});if(!r.ok)throw new Error(await r.text());}
+async function dbUpdate(t,id,row){const r=await fetch(`${SB_URL}/rest/v1/${t}?id=eq.${id}`,{method:"PATCH",headers:{...H,"Prefer":"return=representation"},body:JSON.stringify(row)});if(!r.ok)throw new Error(await r.text());}
+async function dbDelete(t,id){const r=await fetch(`${SB_URL}/rest/v1/${t}?id=eq.${id}`,{method:"DELETE",headers:H});if(!r.ok)throw new Error(await r.text());}
+
+// ── Constants ─────────────────────────────────────────────────────────────
+const ROLES={"Muralidharan":"admin","Piyush":"admin","Fareed":"edit","Shivendra":"edit","Sesirekha":"edit","Gurutej":"view"};
+const MEMBERS=Object.keys(ROLES);
+const GOODNESS_CATS=["Provision Goodness","Balance Sheet","P&L","Cash Flow"];
+const STAKEHOLDERS=["FP&A","AR","GL","Business Finance","Tax","Audit"];
+const GOODNESS_STATUSES=["Not Started","In Progress","Reviewed","Signed Off","Flagged"];
+const LEAKAGE_STATUSES=["Leakage Identified","Invoice Raised","Partially Recovered","Fully Recovered","Written Off"];
+const AVOIDANCE_SOURCES=["Control Execution","Investigation Finding","Process Improvement","Audit Observation","Adhoc"];
+const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const YEARS=["2023","2024","2025","2026"];
+
+const L_META={"Leakage Identified":{bg:"#fee2e2",text:"#991b1b",dot:"#ef4444"},"Invoice Raised":{bg:"#ffedd5",text:"#c2410c",dot:"#f97316"},"Partially Recovered":{bg:"#fef9c3",text:"#854d0e",dot:"#eab308"},"Fully Recovered":{bg:"#d1fae5",text:"#065f46",dot:"#10b981"},"Written Off":{bg:"#f3f4f6",text:"#6b7280",dot:"#9ca3af"}};
+const G_META={"Not Started":{bg:"#f3f4f6",text:"#6b7280",dot:"#9ca3af"},"In Progress":{bg:"#ede9fe",text:"#7c3aed",dot:"#7c3aed"},"Reviewed":{bg:"#dbeafe",text:"#1d4ed8",dot:"#3b82f6"},"Signed Off":{bg:"#d1fae5",text:"#065f46",dot:"#10b981"},"Flagged":{bg:"#fee2e2",text:"#991b1b",dot:"#ef4444"}};
+const AV_META={"Control Execution":{bg:"#d1fae5",text:"#065f46"},"Investigation Finding":{bg:"#dbeafe",text:"#1d4ed8"},"Process Improvement":{bg:"#ede9fe",text:"#7c3aed"},"Audit Observation":{bg:"#ffedd5",text:"#c2410c"},"Adhoc":{bg:"#f3f4f6",text:"#6b7280"}};
+const CAT_META={"Provision Goodness":{bg:"#f3e8ff",text:"#7c3aed",icon:"🛡️"},"Balance Sheet":{bg:"#dbeafe",text:"#1d4ed8",icon:"⚖️"},"P&L":{bg:"#d1fae5",text:"#065f46",icon:"📈"},"Cash Flow":{bg:"#ffedd5",text:"#c2410c",icon:"💰"}};
+const CAT_COLORS={"Provision Goodness":"#7c3aed","Balance Sheet":"#1d4ed8","P&L":"#065f46","Cash Flow":"#c2410c"};
+const AV_COLORS={"Control Execution":"#10b981","Investigation Finding":"#3b82f6","Process Improvement":"#7c3aed","Audit Observation":"#f97316","Adhoc":"#94a3b8"};
+
+const today=new Date(),todayStr=today.toISOString().split("T")[0];
+const EG={title:"",category:GOODNESS_CATS[0],source:AVOIDANCE_SOURCES[0],frequency:"Monthly",date:todayStr,month:MONTHS[today.getMonth()],year:String(today.getFullYear()),owner:MEMBERS[0],status:"Not Started",signoffItems:[{stakeholder:STAKEHOLDERS[0],signedOffBy:"",signedOffDate:""}],remarks:"",impactMillions:""};
+const EL={title:"",category:GOODNESS_CATS[0],source:AVOIDANCE_SOURCES[0],date:todayStr,month:MONTHS[today.getMonth()],year:String(today.getFullYear()),owner:MEMBERS[0],leakageMillions:"",recoveredMillions:"",expectedResolutionDate:"",invoiceRef:"",signoffItems:[{stakeholder:STAKEHOLDERS[0],signedOffBy:"",signedOffDate:""}],remarks:""};
+const EA={title:"",category:GOODNESS_CATS[0],source:AVOIDANCE_SOURCES[0],date:todayStr,month:MONTHS[today.getMonth()],year:String(today.getFullYear()),owner:MEMBERS[0],avoidanceMillions:"",control:"",signoffItems:[{stakeholder:STAKEHOLDERS[0],signedOffBy:"",signedOffDate:""}],remarks:""};
+
+// ── Styles ────────────────────────────────────────────────────────────────
+const S={
+  hdr:{background:"linear-gradient(135deg,#fff,#fdf2f8)",borderBottom:"1px solid #fce7f3",padding:"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"},
+  logo:{width:40,height:40,background:"linear-gradient(135deg,#e11d74,#9333ea)",borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18},
+  addBtn:{background:"linear-gradient(135deg,#e11d74,#9333ea)",border:"none",color:"#fff",padding:"8px 16px",borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer"},
+  expBtn:{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#15803d",padding:"8px 14px",borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer"},
+  prtBtn:{background:"linear-gradient(135deg,#1e293b,#312e81)",border:"none",color:"#fff",padding:"8px 16px",borderRadius:10,fontSize:12,fontWeight:600,cursor:"pointer"},
+  card:{background:"#fff",border:"1px solid #f1f5f9",borderRadius:14,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"},
+  th:{background:"#f8fafc",color:"#94a3b8",fontSize:10,textTransform:"uppercase",letterSpacing:1.2,padding:"11px 14px",textAlign:"left",fontWeight:600,borderBottom:"1px solid #f1f5f9",whiteSpace:"nowrap"},
+  td:{padding:"11px 14px",borderBottom:"1px solid #f8fafc",fontSize:12,color:"#475569",verticalAlign:"middle"},
+  sel:{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#475569",padding:"7px 12px",borderRadius:8,fontSize:12,outline:"none"},
+  overlay:{position:"fixed",inset:0,background:"rgba(15,23,42,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20},
+  modal:{background:"#fff",border:"1px solid #e2e8f0",borderRadius:20,padding:24,width:"100%",maxWidth:620,animation:"slideUp 0.3s ease",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.15)"},
+  inp:{width:"100%",background:"#f8fafc",border:"1px solid #e2e8f0",color:"#1e293b",padding:"9px 13px",borderRadius:10,fontSize:13,outline:"none"},
+  lbl:{fontSize:11,color:"#94a3b8",fontWeight:600,textTransform:"uppercase",letterSpacing:0.5,marginBottom:5,display:"block"},
+  loginWrap:{minHeight:"100vh",background:"#f8fafc",display:"flex",alignItems:"center",justifyContent:"center"},
+  loginCard:{background:"#fff",border:"1px solid #e2e8f0",borderRadius:24,padding:40,width:340,textAlign:"center",boxShadow:"0 4px 24px rgba(0,0,0,0.08)"},
+};
+
+// ── Chart Components (pure SVG, no library) ───────────────────────────────
+function BarChartSVG({data,keys,colors,height=200}){
+  const max=Math.max(...data.flatMap(d=>keys.map(k=>d[k]||0)),1);
+  const bw=Math.floor(320/data.length/keys.length)-2;
+  const gw=Math.floor(320/data.length);
+  return(
+    <svg width="100%" viewBox={`0 0 360 ${height+40}`} style={{overflow:"visible"}}>
+      {[0,0.25,0.5,0.75,1].map((t,i)=>(
+        <g key={i}>
+          <line x1="30" y1={height-(t*height)+5} x2="350" y2={height-(t*height)+5} stroke="#f1f5f9" strokeWidth="1"/>
+          <text x="25" y={height-(t*height)+9} fontSize="8" fill="#94a3b8" textAnchor="end">{Math.round(t*max)}</text>
+        </g>
+      ))}
+      {data.map((d,di)=>(
+        <g key={di} transform={`translate(${30+di*gw},0)`}>
+          {keys.map((k,ki)=>{
+            const val=d[k]||0,h=Math.max((val/max)*height,1);
+            return <g key={ki}>
+              <rect x={ki*(bw+2)} y={height-h+5} width={bw} height={h} fill={colors[ki]} rx="2"
+                onMouseEnter={e=>{e.target.setAttribute("opacity","0.8");}} onMouseLeave={e=>{e.target.setAttribute("opacity","1");}}/>
+              <title>{k}: {val}</title>
+            </g>;
+          })}
+          <text x={gw/2-10} y={height+18} fontSize="9" fill="#94a3b8" textAnchor="middle">{d.month||d.name}</text>
+        </g>
+      ))}
+      <g transform={`translate(30,${height+28})`}>
+        {keys.map((k,i)=><g key={i} transform={`translate(${i*80},0)`}><rect x="0" y="-6" width="8" height="8" fill={colors[i]} rx="1"/><text x="11" y="1" fontSize="9" fill="#64748b">{k}</text></g>)}
+      </g>
+    </svg>
+  );
+}
+
+function LineChartSVG({data,keys,colors,height=200}){
+  const max=Math.max(...data.flatMap(d=>keys.map(k=>d[k]||0)),1);
+  const w=320,pts=data.length;
+  const xStep=pts>1?w/(pts-1):w/2;
+  return(
+    <svg width="100%" viewBox={`0 0 360 ${height+40}`} style={{overflow:"visible"}}>
+      {[0,0.25,0.5,0.75,1].map((t,i)=>(
+        <g key={i}>
+          <line x1="30" y1={height-(t*height)+5} x2="350" y2={height-(t*height)+5} stroke="#f1f5f9" strokeWidth="1"/>
+          <text x="25" y={height-(t*height)+9} fontSize="8" fill="#94a3b8" textAnchor="end">{Math.round(t*max)}</text>
+        </g>
+      ))}
+      {data.map((d,di)=>(
+        <text key={di} x={30+di*xStep} y={height+18} fontSize="9" fill="#94a3b8" textAnchor="middle">{d.month}</text>
+      ))}
+      {keys.map((k,ki)=>{
+        const points=data.map((d,di)=>`${30+di*xStep},${height-(((d[k]||0)/max)*height)+5}`).join(" ");
+        return <g key={ki}>
+          <polyline points={points} fill="none" stroke={colors[ki]} strokeWidth="2.5" strokeLinejoin="round"/>
+          {data.map((d,di)=><circle key={di} cx={30+di*xStep} cy={height-(((d[k]||0)/max)*height)+5} r="4" fill={colors[ki]}><title>{k}: {d[k]||0}</title></circle>)}
+        </g>;
+      })}
+      <g transform={`translate(30,${height+28})`}>
+        {keys.map((k,i)=><g key={i} transform={`translate(${i*90},0)`}><line x1="0" y1="-3" x2="10" y2="-3" stroke={colors[i]} strokeWidth="2"/><text x="13" y="1" fontSize="9" fill="#64748b">{k}</text></g>)}
+      </g>
+    </svg>
+  );
+}
+
+function DonutChart({data,colors,size=140}){
+  const total=data.reduce((s,d)=>s+d.value,0)||1;
+  let angle=-90;
+  const cx=size/2,cy=size/2,r=size*0.35,ir=size*0.22;
+  const slices=data.map((d,i)=>{
+    const sweep=(d.value/total)*360;
+    const startA=angle*(Math.PI/180);
+    angle+=sweep;
+    const endA=angle*(Math.PI/180);
+    const x1=cx+r*Math.cos(startA),y1=cy+r*Math.sin(startA);
+    const x2=cx+r*Math.cos(endA),y2=cy+r*Math.sin(endA);
+    const xi1=cx+ir*Math.cos(startA),yi1=cy+ir*Math.sin(startA);
+    const xi2=cx+ir*Math.cos(endA),yi2=cy+ir*Math.sin(endA);
+    const lg=sweep>180?1:0;
+    return{...d,path:`M ${xi1} ${yi1} L ${x1} ${y1} A ${r} ${r} 0 ${lg} 1 ${x2} ${y2} L ${xi2} ${yi2} A ${ir} ${ir} 0 ${lg} 0 ${xi1} ${yi1} Z`,color:colors[i]||"#94a3b8"};
+  });
+  return(
+    <svg width={size} height={size} style={{display:"block",margin:"0 auto"}}>
+      {slices.map((s,i)=><path key={i} d={s.path} fill={s.color} opacity="0.9"><title>{s.name}: {s.value}</title></path>)}
+      <text x={cx} y={cy+4} textAnchor="middle" fontSize="11" fontWeight="700" fill="#1e293b">{data.length}</text>
+      <text x={cx} y={cy+14} textAnchor="middle" fontSize="8" fill="#94a3b8">sources</text>
+    </svg>
+  );
+}
+
+function HBarChart({data,height=180}){
+  const max=Math.max(...data.map(d=>(d.Goodness||0)+(d.Leakage||0)+(d.Avoidance||0)),1);
+  const bh=16,gap=8,total=data.length;
+  return(
+    <svg width="100%" viewBox={`0 0 300 ${total*(bh+gap)+10}`}>
+      {data.map((d,i)=>{
+        const gw=((d.Goodness||0)/max)*220,lw=((d.Leakage||0)/max)*220,aw=((d.Avoidance||0)/max)*220;
+        const y=i*(bh+gap);
+        return <g key={i}>
+          <text x="55" y={y+bh-3} fontSize="10" fill="#64748b" textAnchor="end">{d.name}</text>
+          <rect x="58" y={y} width={Math.max(gw,1)} height={bh/3} fill="#10b981" rx="2"/>
+          <rect x="58" y={y+bh/3} width={Math.max(lw,1)} height={bh/3} fill="#ef4444" rx="2"/>
+          <rect x="58" y={y+bh*2/3} width={Math.max(aw,1)} height={bh/3} fill="#7c3aed" rx="2"/>
+          <text x={60+Math.max(gw,lw,aw)} y={y+bh-3} fontSize="9" fill="#94a3b8">{(d.Goodness||0)+(d.Leakage||0)+(d.Avoidance||0)}</text>
+        </g>;
+      })}
+      <g transform={`translate(58,${total*(bh+gap)+2})`}>
+        {[["Goodness","#10b981"],["Leakage","#ef4444"],["Avoidance","#7c3aed"]].map(([l,c],i)=>(
+          <g key={i} transform={`translate(${i*72},0)`}><rect x="0" y="-5" width="7" height="7" fill={c} rx="1"/><text x="9" y="1" fontSize="8" fill="#64748b">{l}</text></g>
+        ))}
+      </g>
+    </svg>
+  );
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function Bdg({m,children}){return <span style={{display:"inline-flex",alignItems:"center",gap:4,background:m?.bg||"#f3f4f6",color:m?.text||"#6b7280",padding:"3px 9px",borderRadius:20,fontSize:11,fontWeight:600}}>{children}</span>;}
+function Dot({m}){return <span style={{width:6,height:6,borderRadius:"50%",background:m?.dot||"#9ca3af",display:"inline-block"}}/>;}
+function Spin(){return <div style={{width:28,height:28,border:"3px solid #f1f5f9",borderTop:"3px solid #e11d74",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"60px auto"}}/>;}
+function fmtD(d){return d?new Date(d).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}):"—";}
+function recPct(i){const l=parseFloat(i.leakageMillions)||0,r=parseFloat(i.recoveredMillions)||0;return l>0?Math.round((r/l)*100):0;}
+function exportCSV(data,fname){
+  if(!data?.length){alert("No data.");return;}
+  const keys=Object.keys(data[0]).filter(k=>k!=="signoffItems"&&k!=="created_at");
+  const rows=[keys.join(","),...data.map(r=>keys.map(k=>`"${String(r[k]||"").replace(/"/g,'""')}"`).join(","))];
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([rows.join("\n")],{type:"text/csv"}));a.download=fname;a.click();
+}
+
+// ── App ───────────────────────────────────────────────────────────────────
+function App(){
+  const[user,setUser]=useState(null);
+  const[tab,setTab]=useState("dashboard");
+  const[G,setG]=useState([]);
+  const[L,setL]=useState([]);
+  const[A,setA]=useState([]);
+  const[loading,setLoading]=useState(false);
+  const[showForm,setShowForm]=useState(false);
+  const[editId,setEditId]=useState(null);
+  const[form,setForm]=useState(EG);
+  const[filt,setFilt]=useState({month:"All",year:"All",owner:"All"});
+  const[chartMonth,setChartMonth]=useState(MONTHS[today.getMonth()]);
+  const[chartYear,setChartYear]=useState(String(today.getFullYear()));
+  const[expId,setExpId]=useState(null);
+  const[hovId,setHovId]=useState(null);
+  const[saving,setSaving]=useState(false);
+  const[toast,setToast]=useState(null);
+
+  const role=user?ROLES[user]:null,canEdit=role==="admin"||role==="edit",isAdmin=role==="admin";
+  function showToast(msg,type="success"){setToast({msg,type});setTimeout(()=>setToast(null),3000);}
+  function ff(k,v){setForm(x=>({...x,[k]:v}));}
+  function addSR(){setForm(x=>({...x,signoffItems:[...(x.signoffItems||[]),{stakeholder:STAKEHOLDERS[0],signedOffBy:"",signedOffDate:""}]}));}
+  function remSR(i){setForm(x=>({...x,signoffItems:x.signoffItems.filter((_,j)=>j!==i)}));}
+  function updSR(i,k,v){setForm(x=>({...x,signoffItems:x.signoffItems.map((r,j)=>j===i?{...r,[k]:v}:r)}));}
+
+  const loadAll=useCallback(async()=>{
+    setLoading(true);
+    try{const[g,l,a]=await Promise.all([dbGet("goodness"),dbGet("leakage"),dbGet("avoidance")]);setG(g||[]);setL(l||[]);setA(a||[]);}
+    catch(e){showToast("Load failed: "+e.message,"error");}
+    setLoading(false);
+  },[]);
+
+  useEffect(()=>{if(user)loadAll();},[user]);
+
+  function applyF(arr){return arr.filter(i=>(filt.month==="All"||i.month===filt.month)&&(filt.year==="All"||i.year===filt.year)&&(filt.owner==="All"||i.owner===filt.owner));}
+  const fG=useMemo(()=>applyF(G),[G,filt]);
+  const fL=useMemo(()=>applyF(L),[L,filt]);
+  const fA=useMemo(()=>applyF(A),[A,filt]);
+
+  const last6=useMemo(()=>{
+    const all=[...MONTHS.map(m=>({m,y:"2025"})),...MONTHS.map(m=>({m,y:"2026"}))];
+    const idx=all.findIndex(x=>x.m===chartMonth&&x.y===chartYear);
+    return all.slice(Math.max(0,idx-5),idx+1);
+  },[chartMonth,chartYear]);
+
+  const leakageTrend=useMemo(()=>last6.map(({m,y})=>{
+    const items=L.filter(i=>i.month===m&&i.year===y);
+    return{month:m,Leakage:items.reduce((s,i)=>s+(parseFloat(i.leakageMillions)||0),0),Recovered:items.reduce((s,i)=>s+(parseFloat(i.recoveredMillions)||0),0)};
+  }),[L,last6]);
+
+  const momData=useMemo(()=>last6.map(({m,y})=>({
+    month:m,
+    Leakage:L.filter(i=>i.month===m&&i.year===y).reduce((s,i)=>s+(parseFloat(i.leakageMillions)||0),0),
+    Avoidance:A.filter(i=>i.month===m&&i.year===y).reduce((s,i)=>s+(parseFloat(i.avoidanceMillions)||0),0),
+    Goodness:G.filter(i=>i.month===m&&i.year===y).reduce((s,i)=>s+(parseFloat(i.impactMillions)||0),0),
+  })),[G,L,A,last6]);
+
+  const avoidPie=useMemo(()=>AVOIDANCE_SOURCES.map(src=>({name:src,value:A.reduce((s,i)=>i.source===src?s+(parseFloat(i.avoidanceMillions)||0):s,0)})).filter(d=>d.value>0),[A]);
+  const goodnessComp=useMemo(()=>GOODNESS_CATS.map(cat=>{const items=G.filter(i=>i.category===cat),so=items.filter(i=>i.status==="Signed Off").length;return{cat,total:items.length,signedOff:so,pct:items.length>0?Math.round((so/items.length)*100):0};}), [G]);
+  const teamWork=useMemo(()=>MEMBERS.map(m=>({name:m.split(" ")[0],Goodness:G.filter(i=>i.owner===m).length,Leakage:L.filter(i=>i.owner===m).length,Avoidance:A.filter(i=>i.owner===m).length})).filter(m=>m.Goodness+m.Leakage+m.Avoidance>0),[G,L,A]);
+
+  const chartG=useMemo(()=>G.filter(i=>i.month===chartMonth&&i.year===chartYear),[G,chartMonth,chartYear]);
+  const chartL=useMemo(()=>L.filter(i=>i.month===chartMonth&&i.year===chartYear),[L,chartMonth,chartYear]);
+  const chartA=useMemo(()=>A.filter(i=>i.month===chartMonth&&i.year===chartYear),[A,chartMonth,chartYear]);
+  const summary=useMemo(()=>({
+    gSigned:chartG.filter(i=>i.status==="Signed Off").length,
+    gFlagged:chartG.filter(i=>i.status==="Flagged").length,
+    gImpact:chartG.reduce((s,i)=>s+(parseFloat(i.impactMillions)||0),0).toFixed(1),
+    lTotal:chartL.reduce((s,i)=>s+(parseFloat(i.leakageMillions)||0),0).toFixed(1),
+    lRec:chartL.reduce((s,i)=>s+(parseFloat(i.recoveredMillions)||0),0).toFixed(1),
+    aTotal:chartA.reduce((s,i)=>s+(parseFloat(i.avoidanceMillions)||0),0).toFixed(1),
+  }),[chartG,chartL,chartA]);
+
+  function openAdd(){setForm(tab==="goodness"?{...EG}:tab==="leakage"?{...EL}:{...EA});setEditId(null);setShowForm(true);}
+  function openEdit(item){setForm({...item,signoffItems:item.signoffItems||[]});setEditId(item.id);setShowForm(true);}
+
+  async function save(){
+    if(!form.title?.trim())return;
+    setSaving(true);
+    const tbl=tab==="goodness"?"goodness":tab==="leakage"?"leakage":"avoidance";
+    const row=editId?{...form,id:editId}:{...form,id:Date.now().toString()};
+    try{
+      if(editId){await dbUpdate(tbl,editId,row);if(tab==="goodness")setG(g=>g.map(i=>i.id===editId?row:i));else if(tab==="leakage")setL(g=>g.map(i=>i.id===editId?row:i));else setA(g=>g.map(i=>i.id===editId?row:i));}
+      else{await dbInsert(tbl,row);if(tab==="goodness")setG(g=>[row,...g]);else if(tab==="leakage")setL(g=>[row,...g]);else setA(g=>[row,...g]);}
+      setShowForm(false);showToast(editId?"Updated!":"Added!");
+    }catch(e){showToast("Save failed: "+e.message,"error");}
+    setSaving(false);
+  }
+
+  async function remove(id,tbl){
+    if(!window.confirm("Delete?"))return;
+    try{await dbDelete(tbl,id);if(tbl==="goodness")setG(g=>g.filter(i=>i.id!==id));else if(tbl==="leakage")setL(g=>g.filter(i=>i.id!==id));else setA(g=>g.filter(i=>i.id!==id));showToast("Deleted.");}
+    catch(e){showToast("Delete failed: "+e.message,"error");}
+  }
+
+  const TABS=[{id:"dashboard",l:"📊 Dashboard"},{id:"charts",l:"📈 Charts"},{id:"exec",l:"🎯 Exec View"},{id:"goodness",l:"✅ Goodness"},{id:"leakage",l:"🔴 Leakage"},{id:"avoidance",l:"🛡️ Avoidance"}];
+
+  if(!user)return(
+    <div style={S.loginWrap}>
+      <div style={S.loginCard}>
+        <div style={{...S.logo,width:56,height:56,margin:"0 auto 16px",fontSize:24,borderRadius:16}}>📊</div>
+        <div style={{fontSize:22,fontWeight:800,color:"#1e293b",marginBottom:4}}>RA Control Hub</div>
+        <div style={{fontSize:13,color:"#94a3b8",marginBottom:28}}>Myntra RA · Goodness · Leakage · Avoidance</div>
+        {MEMBERS.map(m=>(
+          <button key={m} onClick={()=>setUser(m)} style={{width:"100%",background:"#f8fafc",border:"1px solid #e2e8f0",color:"#475569",padding:"11px 16px",borderRadius:10,fontSize:13,cursor:"pointer",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"space-between"}}
+            onMouseEnter={e=>{e.currentTarget.style.borderColor="#e11d74";e.currentTarget.style.background="#fff5f9";}}
+            onMouseLeave={e=>{e.currentTarget.style.borderColor="#e2e8f0";e.currentTarget.style.background="#f8fafc";}}>
+            <span style={{fontWeight:600}}>{m}</span>
+            <span style={{fontSize:10,padding:"2px 8px",borderRadius:20,background:ROLES[m]==="admin"?"#fce7f3":ROLES[m]==="edit"?"#d1fae5":"#f3f4f6",color:ROLES[m]==="admin"?"#e11d74":ROLES[m]==="edit"?"#065f46":"#6b7280",fontWeight:700,textTransform:"uppercase"}}>{ROLES[m]}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{minHeight:"100vh",background:"#f8fafc"}}>
+      {toast&&<div className="no-print" style={{position:"fixed",top:20,right:20,zIndex:300,background:toast.type==="error"?"#fee2e2":"#d1fae5",border:`1px solid ${toast.type==="error"?"#fca5a5":"#6ee7b7"}`,color:toast.type==="error"?"#991b1b":"#065f46",padding:"12px 20px",borderRadius:12,fontSize:13,fontWeight:600,boxShadow:"0 8px 32px rgba(0,0,0,0.1)"}}>{toast.type==="error"?"⚠ ":"✓ "}{toast.msg}</div>}
+
+      {/* Header */}
+      <div style={S.hdr} className="no-print">
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={S.logo}>📊</div>
+          <div><div style={{fontSize:18,fontWeight:800,color:"#1e293b"}}>Myntra RA · Control Hub</div><div style={{fontSize:11,color:"#94a3b8"}}>Goodness · Leakage · Avoidance</div></div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <div style={{display:"flex",background:"#f1f5f9",borderRadius:10,padding:3,gap:1}}>
+            {TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{background:tab===t.id?"#fff":"transparent",border:"none",color:tab===t.id?"#e11d74":"#94a3b8",padding:"6px 11px",borderRadius:8,fontSize:11,fontWeight:600,cursor:"pointer",boxShadow:tab===t.id?"0 1px 4px rgba(0,0,0,0.1)":"none",whiteSpace:"nowrap"}}>{t.l}</button>)}
+          </div>
+          {["dashboard","charts","exec"].includes(tab)&&(
+            <div style={{display:"flex",alignItems:"center",gap:6,background:"#f1f5f9",borderRadius:10,padding:"5px 10px"}}>
+              <span style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>Period:</span>
+              <select value={chartMonth} onChange={e=>setChartMonth(e.target.value)} style={{background:"transparent",border:"none",color:"#1e293b",fontSize:12,fontWeight:600,outline:"none",cursor:"pointer"}}>{MONTHS.map(m=><option key={m}>{m}</option>)}</select>
+              <select value={chartYear} onChange={e=>setChartYear(e.target.value)} style={{background:"transparent",border:"none",color:"#1e293b",fontSize:12,fontWeight:600,outline:"none",cursor:"pointer"}}>{YEARS.map(y=><option key={y}>{y}</option>)}</select>
+            </div>
+          )}
+          <button onClick={loadAll} style={{background:"transparent",border:"1px solid #e2e8f0",color:"#94a3b8",padding:"7px 12px",borderRadius:8,fontSize:12,cursor:"pointer"}}>↻</button>
+          {tab==="goodness"&&<button onClick={()=>exportCSV(G,`goodness_${chartMonth}_${chartYear}.csv`)} style={S.expBtn}>⬇ CSV</button>}
+          {tab==="leakage"&&<button onClick={()=>exportCSV(L,`leakage_${chartMonth}_${chartYear}.csv`)} style={S.expBtn}>⬇ CSV</button>}
+          {tab==="avoidance"&&<button onClick={()=>exportCSV(A,`avoidance_${chartMonth}_${chartYear}.csv`)} style={S.expBtn}>⬇ CSV</button>}
+          {["charts","exec"].includes(tab)&&<button onClick={()=>window.print()} style={S.prtBtn}>🖨️ Print</button>}
+          <div style={{textAlign:"right"}}><div style={{fontSize:12,fontWeight:600,color:"#1e293b"}}>{user}</div><div style={{fontSize:10,color:isAdmin?"#e11d74":canEdit?"#10b981":"#94a3b8"}}>{role}</div></div>
+          <button onClick={()=>setUser(null)} style={{background:"transparent",border:"1px solid #e2e8f0",color:"#94a3b8",padding:"5px 10px",borderRadius:8,fontSize:11,cursor:"pointer"}}>Switch</button>
+          {canEdit&&["goodness","leakage","avoidance"].includes(tab)&&<button onClick={openAdd} style={S.addBtn}>+ Add</button>}
+        </div>
+      </div>
+
+      {["goodness","leakage","avoidance"].includes(tab)&&(
+        <div className="no-print" style={{background:"#fff",borderBottom:"1px solid #f1f5f9",padding:"9px 20px",display:"flex",gap:10}}>
+          {[["month",["All",...MONTHS]],["year",["All",...YEARS]],["owner",["All",...MEMBERS]]].map(([k,opts])=>(
+            <select key={k} value={filt[k]} onChange={e=>setFilt(f=>({...f,[k]:e.target.value}))} style={S.sel}>{opts.map(o=><option key={o}>{o}</option>)}</select>
+          ))}
+        </div>
+      )}
+
+      <div style={{padding:16,animation:"fadeIn 0.3s ease"}}>
+        {loading&&<Spin/>}
+
+        {/* DASHBOARD */}
+        {!loading&&tab==="dashboard"&&(
+          <>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+              {[
+                {icon:"✅",label:"Goodness Signed Off",value:summary.gSigned,sub:`of ${chartG.length} · ₹${summary.gImpact}Mn`,color:"#10b981",bg:"#d1fae5"},
+                {icon:"🔴",label:"Leakage Identified",value:`₹${summary.lTotal}Mn`,sub:`₹${summary.lRec}Mn recovered`,color:"#ef4444",bg:"#fee2e2"},
+                {icon:"🛡️",label:"Avoidance Impact",value:`₹${summary.aTotal}Mn`,sub:`${chartA.length} initiatives`,color:"#7c3aed",bg:"#ede9fe"},
+                {icon:"⚠️",label:"Flagged Items",value:summary.gFlagged,sub:"require attention",color:"#f97316",bg:"#ffedd5"},
+              ].map(s=>(
+                <div key={s.label} style={{...S.card,padding:"16px 18px",borderTop:`3px solid ${s.color}`,position:"relative",overflow:"hidden"}}>
+                  <div style={{position:"absolute",top:-20,right:-20,width:70,height:70,borderRadius:"50%",background:s.bg,opacity:0.5,filter:"blur(16px)"}}/>
+                  <div style={{fontSize:10,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:0.5}}>{s.icon} {s.label}</div>
+                  <div style={{fontSize:24,fontWeight:800,color:s.color,marginBottom:2}}>{s.value}</div>
+                  <div style={{fontSize:10,color:"#94a3b8"}}>{s.sub}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14}}>
+              {[
+                {title:"✅ Recent Goodness",color:"#10b981",items:G.slice(0,4),render:i=><><div style={{fontSize:12,fontWeight:600,color:"#1e293b"}}>{i.title}</div><div style={{fontSize:10,color:"#94a3b8"}}>{i.month} {i.year}</div></>,badge:i=><Bdg m={G_META[i.status]}><Dot m={G_META[i.status]}/>{i.status}</Bdg>,go:"goodness"},
+                {title:"🔴 Open Leakages",color:"#ef4444",items:L.filter(i=>i.status==="Leakage Identified"||i.status==="Invoice Raised"),render:i=><><div style={{fontSize:12,fontWeight:600,color:"#1e293b"}}>{i.title}</div></>,badge:i=><span style={{fontSize:12,fontWeight:700,color:"#ef4444"}}>₹{i.leakageMillions}Mn</span>,go:"leakage"},
+                {title:"🛡️ Recent Avoidance",color:"#7c3aed",items:A.slice(0,4),render:i=><><div style={{fontSize:12,fontWeight:600,color:"#1e293b"}}>{i.title}</div><Bdg m={AV_META[i.source]}>{i.source}</Bdg></>,badge:i=><span style={{fontSize:13,fontWeight:700,color:"#7c3aed"}}>₹{i.avoidanceMillions}Mn</span>,go:"avoidance"},
+              ].map(({title,color,items,render,badge,go})=>(
+                <div key={title} style={{...S.card,padding:16}}>
+                  <div style={{fontSize:13,fontWeight:700,color,marginBottom:12}}>{title}</div>
+                  {items.length===0&&<div style={{fontSize:12,color:"#94a3b8",padding:"10px 0"}}>No data yet.</div>}
+                  {items.map(i=>(
+                    <div key={i.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 0",borderBottom:"1px solid #f8fafc"}}>
+                      <div>{render(i)}</div>
+                      {badge(i)}
+                    </div>
+                  ))}
+                  <button onClick={()=>setTab(go)} style={{marginTop:10,background:"none",border:"none",color,fontSize:11,fontWeight:600,cursor:"pointer"}}>View all →</button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* CHARTS */}
+        {!loading&&tab==="charts"&&(
+          <>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+              <div style={{...S.card,padding:18}}>
+                <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:2}}>🔴 Leakage vs Recovery Trend</div>
+                <div style={{fontSize:11,color:"#94a3b8",marginBottom:12}}>Last 6 months · ₹ Millions</div>
+                {leakageTrend.every(d=>d.Leakage===0&&d.Recovered===0)?<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"40px 0"}}>Add leakage data to see chart</div>:<BarChartSVG data={leakageTrend} keys={["Leakage","Recovered"]} colors={["#ef4444","#10b981"]}/>}
+              </div>
+              <div style={{...S.card,padding:18}}>
+                <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:2}}>📈 Month-on-Month Comparison</div>
+                <div style={{fontSize:11,color:"#94a3b8",marginBottom:12}}>Leakage · Avoidance · Goodness</div>
+                {momData.every(d=>d.Leakage===0&&d.Avoidance===0&&d.Goodness===0)?<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"40px 0"}}>Add data to see trend</div>:<LineChartSVG data={momData} keys={["Leakage","Avoidance","Goodness"]} colors={["#ef4444","#7c3aed","#10b981"]}/>}
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14}}>
+              <div style={{...S.card,padding:18}}>
+                <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:8}}>🛡️ Avoidance by Source</div>
+                {avoidPie.length===0?<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"40px 0"}}>No avoidance data yet</div>:<>
+                  <DonutChart data={avoidPie} colors={AVOIDANCE_SOURCES.map(s=>AV_COLORS[s])} size={120}/>
+                  <div style={{marginTop:10}}>
+                    {avoidPie.map((d,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:11,borderBottom:"1px solid #f8fafc"}}><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:8,height:8,borderRadius:"50%",background:AV_COLORS[d.name]||"#94a3b8"}}/><span style={{color:"#64748b"}}>{d.name}</span></div><strong>₹{d.value}Mn</strong></div>)}
+                  </div>
+                </>}
+              </div>
+              <div style={{...S.card,padding:18}}>
+                <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:14}}>✅ Goodness Completion</div>
+                {goodnessComp.map(({cat,total,signedOff,pct})=>(
+                  <div key={cat} style={{marginBottom:12}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:11,fontWeight:600,color:"#1e293b"}}>{cat}</span><span style={{fontSize:12,fontWeight:800,color:CAT_COLORS[cat]}}>{pct}%</span></div>
+                    <div style={{background:"#f1f5f9",borderRadius:6,height:8}}><div style={{width:`${pct}%`,background:`linear-gradient(90deg,${CAT_COLORS[cat]},#e11d74)`,borderRadius:6,height:8,transition:"width 0.5s"}}/></div>
+                    <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>{signedOff}/{total} signed off</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{...S.card,padding:18}}>
+                <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginBottom:14}}>👤 Team Workload</div>
+                {teamWork.length===0?<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"40px 0"}}>No data yet</div>:<HBarChart data={teamWork}/>}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* EXEC VIEW */}
+        {!loading&&tab==="exec"&&(
+          <div style={{maxWidth:960,margin:"0 auto"}}>
+            <div style={{...S.card,marginBottom:14,background:"linear-gradient(135deg,#1e293b,#312e81)",border:"none",padding:"28px 36px"}}>
+              <div style={{fontSize:10,color:"#818cf8",textTransform:"uppercase",letterSpacing:2,marginBottom:6}}>Revenue Assurance · Leadership Briefing</div>
+              <div style={{fontSize:28,fontWeight:800,color:"#fff",marginBottom:6}}>Monthly Performance Summary</div>
+              <div style={{fontSize:16,color:"#a5b4fc",marginBottom:20}}>{chartMonth} {chartYear} · Myntra RA Team</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14}}>
+                {[{l:"Goodness Signed Off",v:`${summary.gSigned} items · ₹${summary.gImpact}Mn`,c:"#34d399"},{l:"Leakage Identified",v:`₹${summary.lTotal}Mn (₹${summary.lRec}Mn recovered)`,c:"#f87171"},{l:"Avoidance Impact",v:`₹${summary.aTotal}Mn · ${chartA.length} initiatives`,c:"#a78bfa"}].map(s=>(
+                  <div key={s.l} style={{background:"rgba(255,255,255,0.07)",borderRadius:12,padding:"14px 18px",border:"1px solid rgba(255,255,255,0.1)"}}>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.5)",marginBottom:4,textTransform:"uppercase",letterSpacing:0.5}}>{s.l}</div>
+                    <div style={{fontSize:18,fontWeight:800,color:s.c}}>{s.v}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+              <div style={{...S.card,padding:18}}>
+                <div style={{fontSize:14,fontWeight:700,color:"#1e293b",marginBottom:14}}>Leakage vs Recovery — 6 Month Trend</div>
+                {leakageTrend.every(d=>d.Leakage===0)?<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"40px 0"}}>Add leakage data to see chart</div>:<BarChartSVG data={leakageTrend} keys={["Leakage","Recovered"]} colors={["#ef4444","#10b981"]} height={220}/>}
+              </div>
+              <div style={{...S.card,padding:18}}>
+                <div style={{fontSize:14,fontWeight:700,color:"#1e293b",marginBottom:14}}>Month-on-Month Performance</div>
+                {momData.every(d=>d.Leakage===0&&d.Avoidance===0)?<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"40px 0"}}>Add data to see trend</div>:<LineChartSVG data={momData} keys={["Leakage","Avoidance","Goodness"]} colors={["#ef4444","#7c3aed","#10b981"]} height={220}/>}
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:14,marginBottom:14}}>
+              <div style={{...S.card,padding:18}}>
+                <div style={{fontSize:14,fontWeight:700,color:"#1e293b",marginBottom:8}}>Avoidance by Source</div>
+                {avoidPie.length===0?<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"30px 0"}}>No data</div>:<>
+                  <DonutChart data={avoidPie} colors={AVOIDANCE_SOURCES.map(s=>AV_COLORS[s])} size={130}/>
+                  {avoidPie.map((d,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",fontSize:11,borderBottom:"1px solid #f8fafc"}}><div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:7,height:7,borderRadius:"50%",background:AV_COLORS[d.name]||"#94a3b8"}}/><span style={{color:"#64748b"}}>{d.name}</span></div><strong>₹{d.value}Mn</strong></div>)}
+                </>}
+              </div>
+              <div style={{...S.card,padding:18}}>
+                <div style={{fontSize:14,fontWeight:700,color:"#1e293b",marginBottom:14}}>Goodness Completion</div>
+                {goodnessComp.map(({cat,total,signedOff,pct})=>(
+                  <div key={cat} style={{marginBottom:12}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontSize:12,fontWeight:600,color:"#1e293b"}}>{cat}</span><span style={{fontSize:13,fontWeight:800,color:CAT_COLORS[cat]}}>{pct}%</span></div>
+                    <div style={{background:"#f1f5f9",borderRadius:6,height:9}}><div style={{width:`${pct}%`,background:`linear-gradient(90deg,${CAT_COLORS[cat]},#e11d74)`,borderRadius:6,height:9}}/></div>
+                    <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>{signedOff}/{total} signed off</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{...S.card,padding:18}}>
+                <div style={{fontSize:14,fontWeight:700,color:"#1e293b",marginBottom:14}}>Team Workload</div>
+                {teamWork.length===0?<div style={{fontSize:12,color:"#94a3b8",textAlign:"center",padding:"30px 0"}}>No data yet</div>:<HBarChart data={teamWork}/>}
+              </div>
+            </div>
+            <div style={{...S.card,padding:"12px 20px",background:"#f8fafc",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"#94a3b8"}}>Myntra Revenue Assurance · {chartMonth} {chartYear} · Confidential — For Internal Leadership Use Only</div>
+            </div>
+          </div>
+        )}
+
+        {/* GOODNESS */}
+        {!loading&&tab==="goodness"&&(
+          <div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}}>
+              {GOODNESS_CATS.map(cat=>{const its=G.filter(i=>i.category===cat),so=its.filter(i=>i.status==="Signed Off").length,meta=CAT_META[cat],pct=its.length>0?Math.round((so/its.length)*100):0;return <div key={cat} style={{...S.card,padding:"12px 16px"}}><div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}><span style={{fontSize:16}}>{meta.icon}</span><span style={{fontSize:11,fontWeight:700,color:meta.text}}>{cat}</span></div><div style={{fontSize:10,color:"#94a3b8",marginBottom:5}}>{so}/{its.length} signed off</div><div style={{background:"#f1f5f9",borderRadius:4,height:4}}><div style={{width:`${pct}%`,background:`linear-gradient(90deg,${meta.text},#e11d74)`,borderRadius:4,height:4}}/></div></div>;})}
+            </div>
+            <div style={S.card}>
+              <table><thead><tr>{["Item","Category","Date","Period","Owner","Status","Signed Off By","Impact",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+              <tbody>
+                {fG.map(item=>(
+                  <React.Fragment key={item.id}>
+                    <tr style={{background:hovId===item.id?"#fafafa":"#fff",cursor:"pointer"}} onMouseEnter={()=>setHovId(item.id)} onMouseLeave={()=>setHovId(null)} onClick={()=>setExpId(expId===item.id?null:item.id)}>
+                      <td style={{...S.td,fontWeight:600,color:"#1e293b",maxWidth:180}}>{item.title}<div style={{fontSize:10,color:"#94a3b8"}}>{item.frequency}</div></td>
+                      <td style={S.td}><Bdg m={CAT_META[item.category]}>{CAT_META[item.category]?.icon} {item.category}</Bdg></td>
+                      <td style={{...S.td,fontSize:11,whiteSpace:"nowrap"}}>{fmtD(item.date)}</td>
+                      <td style={{...S.td,fontSize:11,whiteSpace:"nowrap"}}>{item.month} {item.year}</td>
+                      <td style={S.td}>{item.owner}</td>
+                      <td style={S.td}><Bdg m={G_META[item.status]}><Dot m={G_META[item.status]}/>{item.status}</Bdg></td>
+                      <td style={S.td}><div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{(item.signoffItems||[]).map((s,i)=><span key={i} style={{fontSize:9,padding:"2px 6px",borderRadius:10,background:s.signedOffBy&&s.signedOffDate?"#d1fae5":"#f3f4f6",color:s.signedOffBy&&s.signedOffDate?"#065f46":"#9ca3af",fontWeight:600}}>{s.signedOffBy&&s.signedOffDate?"✓ ":""}{s.stakeholder}</span>)}</div></td>
+                      <td style={{...S.td,color:"#10b981",fontWeight:600}}>{item.impactMillions?`₹${item.impactMillions}Mn`:"—"}</td>
+                      <td style={S.td} onClick={e=>e.stopPropagation()}>{canEdit&&<div style={{display:"flex",gap:6}}><button onClick={()=>openEdit(item)} style={{background:"none",border:"none",color:"#e11d74",cursor:"pointer",fontSize:11,fontWeight:600}}>Edit</button>{isAdmin&&<button onClick={()=>remove(item.id,"goodness")} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:11}}>Del</button>}</div>}</td>
+                    </tr>
+                    {expId===item.id&&<tr><td colSpan={9} style={{padding:"10px 16px",background:"#fdf2f8",borderBottom:"1px solid #fce7f3",fontSize:11,color:"#64748b"}}><strong style={{color:"#e11d74"}}>Remarks:</strong> {item.remarks||"None"} &nbsp;·&nbsp; {(item.signoffItems||[]).map((s,i)=><span key={i} style={{marginRight:10}}><strong>{s.stakeholder}:</strong> {s.signedOffBy||"—"} {s.signedOffDate?`(${fmtD(s.signedOffDate)})`:"(pending)"}</span>)}</td></tr>}
+                  </React.Fragment>
+                ))}
+                {fG.length===0&&<tr><td colSpan={9} style={{padding:40,textAlign:"center",color:"#94a3b8"}}>No items yet. Click "+ Add"!</td></tr>}
+              </tbody></table>
+            </div>
+          </div>
+        )}
+
+        {/* LEAKAGE */}
+        {!loading&&tab==="leakage"&&(
+          <div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}}>
+              {[
+                {label:"Total Items",value:fL.length,color:"#ef4444",sub:`all leakage items`},
+                {label:"Total Leakage",value:`₹${fL.reduce((s,i)=>s+(parseFloat(i.leakageMillions)||0),0).toFixed(1)}Mn`,color:"#f97316",sub:"identified"},
+                {label:"Total Recovered",value:`₹${fL.reduce((s,i)=>s+(parseFloat(i.recoveredMillions)||0),0).toFixed(1)}Mn`,color:"#10b981",sub:"recovered so far"},
+                {label:"Outstanding",value:`₹${(fL.reduce((s,i)=>s+(parseFloat(i.leakageMillions)||0),0)-fL.reduce((s,i)=>s+(parseFloat(i.recoveredMillions)||0),0)).toFixed(1)}Mn`,color:"#7c3aed",sub:"yet to recover"},
+              ].map(s=>(
+                <div key={s.label} style={{...S.card,padding:"16px 18px",borderTop:`3px solid ${s.color}`,position:"relative",overflow:"hidden"}}>
+                  <div style={{position:"absolute",top:-20,right:-20,width:70,height:70,borderRadius:"50%",background:s.color,opacity:0.1,filter:"blur(16px)"}}/>
+                  <div style={{fontSize:10,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:0.5}}>{s.label}</div>
+                  <div style={{fontSize:24,fontWeight:800,color:s.color,marginBottom:2}}>{s.value}</div>
+                  <div style={{fontSize:10,color:"#94a3b8"}}>{s.sub}</div>
+                </div>
+              ))}
+            </div>
+            <div style={S.card}>
+              <table><thead><tr>{["Item","Date","Period","Owner","Leakage","Recovered","Rec %","Resolution","Invoice","Signed Off By",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+              <tbody>
+                {fL.map(item=>(
+                  <React.Fragment key={item.id}>
+                    <tr style={{background:hovId===item.id?"#fafafa":"#fff",cursor:"pointer"}} onMouseEnter={()=>setHovId(item.id)} onMouseLeave={()=>setHovId(null)} onClick={()=>setExpId(expId===item.id?null:item.id)}>
+                      <td style={{...S.td,fontWeight:600,color:"#1e293b",maxWidth:180}}>{item.title}{item.category&&<div style={{fontSize:10,color:"#94a3b8"}}>{item.category}</div>}</td>
+                      <td style={{...S.td,fontSize:11,whiteSpace:"nowrap"}}>{fmtD(item.date)}</td>
+                      <td style={{...S.td,fontSize:11,whiteSpace:"nowrap"}}>{item.month} {item.year}</td>
+                      <td style={S.td}>{item.owner}</td>
+                      <td style={{...S.td,color:"#ef4444",fontWeight:700}}>₹{item.leakageMillions||"0"}Mn</td>
+                      <td style={{...S.td,color:"#10b981",fontWeight:700}}>₹{item.recoveredMillions||"0"}Mn</td>
+                      <td style={S.td}><div style={{display:"flex",alignItems:"center",gap:5}}><div style={{width:36,background:"#f1f5f9",borderRadius:4,height:5}}><div style={{width:`${recPct(item)}%`,background:"linear-gradient(90deg,#10b981,#059669)",borderRadius:4,height:5}}/></div><span style={{fontSize:10,color:"#94a3b8"}}>{recPct(item)}%</span></div></td>
+                      <td style={{...S.td,fontSize:11,whiteSpace:"nowrap",color:item.expectedResolutionDate&&new Date(item.expectedResolutionDate)<new Date()&&item.status!=="Fully Recovered"?"#ef4444":"#475569"}}>{fmtD(item.expectedResolutionDate)}</td>
+                      <td style={{...S.td,fontSize:11}}>{item.invoiceRef||"—"}</td>
+                      <td style={S.td}><div style={{display:"flex",gap:3,flexWrap:"wrap"}}>{(item.signoffItems||[]).map((s,i)=><span key={i} style={{fontSize:9,padding:"2px 6px",borderRadius:10,background:s.signedOffBy&&s.signedOffDate?"#d1fae5":"#f3f4f6",color:s.signedOffBy&&s.signedOffDate?"#065f46":"#9ca3af",fontWeight:600}}>{s.signedOffBy&&s.signedOffDate?"✓ ":""}{s.stakeholder}</span>)}</div></td>
+                      <td style={S.td} onClick={e=>e.stopPropagation()}>{canEdit&&<div style={{display:"flex",gap:6}}><button onClick={()=>openEdit(item)} style={{background:"none",border:"none",color:"#e11d74",cursor:"pointer",fontSize:11,fontWeight:600}}>Edit</button>{isAdmin&&<button onClick={()=>remove(item.id,"leakage")} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:11}}>Del</button>}</div>}</td>
+                    </tr>
+                    {expId===item.id&&<tr><td colSpan={11} style={{padding:"10px 16px",background:"#fff5f5",borderBottom:"1px solid #fee2e2",fontSize:11,color:"#64748b"}}><strong style={{color:"#ef4444"}}>Remarks:</strong> {item.remarks||"None"}</td></tr>}
+                  </React.Fragment>
+                ))}
+                {fL.length===0&&<tr><td colSpan={11} style={{padding:40,textAlign:"center",color:"#94a3b8"}}>No leakages yet. Click "+ Add"!</td></tr>}
+              </tbody></table>
+            </div>
+          </div>
+        )}
+
+        {/* AVOIDANCE */}
+        {!loading&&tab==="avoidance"&&(
+          <div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}}>
+              {[
+                {label:"Total Items",value:fA.length,color:"#7c3aed",sub:"all avoidance items"},
+                {label:"Total Avoided",value:`₹${fA.reduce((s,i)=>s+(parseFloat(i.avoidanceMillions)||0),0).toFixed(1)}Mn`,color:"#10b981",sub:"impact prevented"},
+                {label:"Control Execution",value:fA.filter(i=>i.source==="Control Execution").length,color:"#065f46",sub:`₹${fA.filter(i=>i.source==="Control Execution").reduce((s,i)=>s+(parseFloat(i.avoidanceMillions)||0),0).toFixed(1)}Mn`},
+                {label:"Investigations",value:fA.filter(i=>i.source==="Investigation Finding").length,color:"#1d4ed8",sub:`₹${fA.filter(i=>i.source==="Investigation Finding").reduce((s,i)=>s+(parseFloat(i.avoidanceMillions)||0),0).toFixed(1)}Mn`},
+              ].map(s=>(
+                <div key={s.label} style={{...S.card,padding:"16px 18px",borderTop:`3px solid ${s.color}`,position:"relative",overflow:"hidden"}}>
+                  <div style={{position:"absolute",top:-20,right:-20,width:70,height:70,borderRadius:"50%",background:s.color,opacity:0.1,filter:"blur(16px)"}}/>
+                  <div style={{fontSize:10,color:"#94a3b8",marginBottom:4,textTransform:"uppercase",letterSpacing:0.5}}>{s.label}</div>
+                  <div style={{fontSize:24,fontWeight:800,color:s.color,marginBottom:2}}>{s.value}</div>
+                  <div style={{fontSize:10,color:"#94a3b8"}}>{s.sub}</div>
+                </div>
+              ))}
+            </div>
+            <div style={S.card}>
+              <table><thead><tr>{["Initiative","Source","Category","Date","Period","Owner","Avoidance (Mn)","Control / Method","Signed Off By",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
+              <tbody>
+                {fA.map(item=>(
+                  <tr key={item.id} style={{background:hovId===item.id?"#fafafa":"#fff"}} onMouseEnter={()=>setHovId(item.id)} onMouseLeave={()=>setHovId(null)}>
+                    <td style={{...S.td,fontWeight:600,color:"#1e293b",maxWidth:180}}>{item.title}</td>
+                    <td style={S.td}><Bdg m={AV_META[item.source]}>{item.source}</Bdg></td>
+                    <td style={{...S.td,fontSize:11,whiteSpace:"nowrap"}}>{fmtD(item.date)}</td>
+                    <td style={{...S.td,fontSize:11,whiteSpace:"nowrap"}}>{item.month} {item.year}</td>
+                    <td style={S.td}>{item.owner}</td>
+                    <td style={{...S.td,color:"#7c3aed",fontWeight:700}}>₹{item.avoidanceMillions||"0"}Mn</td>
+                    <td style={{...S.td,fontSize:11,maxWidth:140,color:"#64748b"}}>{item.control||"—"}</td>
+                    <td style={{...S.td,fontSize:11,maxWidth:160,color:"#94a3b8"}}>{item.remarks||"—"}</td>
+                    <td style={S.td} onClick={e=>e.stopPropagation()}>{canEdit&&<div style={{display:"flex",gap:6}}><button onClick={()=>openEdit(item)} style={{background:"none",border:"none",color:"#e11d74",cursor:"pointer",fontSize:11,fontWeight:600}}>Edit</button>{isAdmin&&<button onClick={()=>remove(item.id,"avoidance")} style={{background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:11}}>Del</button>}</div>}</td>
+                  </tr>
+                ))}
+                {fA.length===0&&<tr><td colSpan={9} style={{padding:40,textAlign:"center",color:"#94a3b8"}}>No avoidance items yet. Click "+ Add"!</td></tr>}
+              </tbody></table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* MODAL */}
+      {showForm&&(
+        <div style={S.overlay}>
+          <div style={S.modal}>
+            <div style={{fontSize:16,fontWeight:800,color:"#1e293b",marginBottom:18}}>{editId?"Edit":"Add"} {tab==="goodness"?"Goodness":tab==="leakage"?"Leakage":"Avoidance"} Item</div>
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <div><label style={S.lbl}>Title *</label><input value={form.title||""} onChange={e=>ff("title",e.target.value)} placeholder="Title" style={S.inp}/></div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+                <div><label style={S.lbl}>Date</label><input type="date" value={form.date||""} onChange={e=>ff("date",e.target.value)} style={S.inp}/></div>
+                <div><label style={S.lbl}>Month</label><select value={form.month||""} onChange={e=>ff("month",e.target.value)} style={S.inp}>{MONTHS.map(m=><option key={m}>{m}</option>)}</select></div>
+                <div><label style={S.lbl}>Year</label><select value={form.year||""} onChange={e=>ff("year",e.target.value)} style={S.inp}>{YEARS.map(y=><option key={y}>{y}</option>)}</select></div>
+              </div>
+              {/* Common fields for all 3 tabs */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div><label style={S.lbl}>Owner</label><select value={form.owner||""} onChange={e=>ff("owner",e.target.value)} style={S.inp}>{MEMBERS.map(m=><option key={m}>{m}</option>)}</select></div>
+                <div><label style={S.lbl}>Category</label><select value={form.category||""} onChange={e=>ff("category",e.target.value)} style={S.inp}>{GOODNESS_CATS.map(c=><option key={c}>{c}</option>)}</select></div>
+                <div><label style={S.lbl}>Source</label><select value={form.source||""} onChange={e=>ff("source",e.target.value)} style={S.inp}>{AVOIDANCE_SOURCES.map(s=><option key={s}>{s}</option>)}</select></div>
+              </div>
+              {/* Tab-specific fields */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                {tab==="goodness"&&<>
+                  <div><label style={S.lbl}>Frequency</label><select value={form.frequency||""} onChange={e=>ff("frequency",e.target.value)} style={S.inp}><option>Monthly</option><option>Quarterly</option></select></div>
+                  <div><label style={S.lbl}>Status</label><select value={form.status||""} onChange={e=>ff("status",e.target.value)} style={S.inp}>{GOODNESS_STATUSES.map(s=><option key={s}>{s}</option>)}</select></div>
+                  <div><label style={S.lbl}>Impact (₹ Mn)</label><input placeholder="e.g. 45" value={form.impactMillions||""} onChange={e=>ff("impactMillions",e.target.value)} style={S.inp}/></div>
+                </>}
+                {tab==="leakage"&&<>
+                  <div><label style={S.lbl}>Leakage (₹ Mn)</label><input placeholder="e.g. 62" value={form.leakageMillions||""} onChange={e=>ff("leakageMillions",e.target.value)} style={S.inp}/></div>
+                  <div><label style={S.lbl}>Recovered (₹ Mn)</label><input placeholder="e.g. 10" value={form.recoveredMillions||""} onChange={e=>ff("recoveredMillions",e.target.value)} style={S.inp}/></div>
+                  <div><label style={S.lbl}>Expected Resolution</label><input type="date" value={form.expectedResolutionDate||""} onChange={e=>ff("expectedResolutionDate",e.target.value)} style={S.inp}/></div>
+                  <div><label style={S.lbl}>Invoice Ref</label><input placeholder="INV-2026-001" value={form.invoiceRef||""} onChange={e=>ff("invoiceRef",e.target.value)} style={S.inp}/></div>
+                </>}
+                {tab==="avoidance"&&<>
+                  <div><label style={S.lbl}>Avoidance (₹ Mn)</label><input placeholder="e.g. 85" value={form.avoidanceMillions||""} onChange={e=>ff("avoidanceMillions",e.target.value)} style={S.inp}/></div>
+                  <div style={{gridColumn:"1/-1"}}><label style={S.lbl}>Control / Method</label><input placeholder="e.g. AI fraud detection" value={form.control||""} onChange={e=>ff("control",e.target.value)} style={S.inp}/></div>
+                </>}
+              </div>
+              {/* Sign-off — common for all 3 tabs */}
+              <div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                  <label style={S.lbl}>Sign-off By</label>
+                  <button type="button" onClick={addSR} style={{background:"#fce7f3",border:"none",color:"#e11d74",padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:600,cursor:"pointer"}}>+ Add Row</button>
+                </div>
+                {(form.signoffItems||[]).map((row,i)=>(
+                  <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:8,marginBottom:7}}>
+                    <select value={row.stakeholder} onChange={e=>updSR(i,"stakeholder",e.target.value)} style={{...S.inp,padding:"8px 10px"}}>{STAKEHOLDERS.map(s=><option key={s}>{s}</option>)}</select>
+                    <input placeholder="Name" value={row.signedOffBy} onChange={e=>updSR(i,"signedOffBy",e.target.value)} style={{...S.inp,padding:"8px 10px"}}/>
+                    <input type="date" value={row.signedOffDate} onChange={e=>updSR(i,"signedOffDate",e.target.value)} style={{...S.inp,padding:"8px 10px"}}/>
+                    <button type="button" onClick={()=>remSR(i)} style={{background:"#fee2e2",border:"none",color:"#ef4444",width:30,height:34,borderRadius:8,cursor:"pointer"}}>✕</button>
+                  </div>
+                ))}
+                {(form.signoffItems||[]).length===0&&<div style={{fontSize:11,color:"#94a3b8"}}>No sign-offs added. Click "+ Add Row".</div>}
+              </div>
+              <div><label style={S.lbl}>Remarks</label><textarea placeholder="Notes..." rows={2} value={form.remarks||""} onChange={e=>ff("remarks",e.target.value)} style={{...S.inp,resize:"none"}}/></div>
+            </div>
+            <div style={{display:"flex",gap:10,marginTop:16}}>
+              <button onClick={save} disabled={saving} style={{flex:1,background:"linear-gradient(135deg,#e11d74,#9333ea)",border:"none",color:"#fff",padding:"11px",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",opacity:saving?0.7:1}}>{saving?"Saving...":"Save"}</button>
+              <button onClick={()=>setShowForm(false)} style={{flex:1,background:"transparent",border:"1px solid #e2e8f0",color:"#94a3b8",padding:"11px",borderRadius:10,fontSize:13,cursor:"pointer"}}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.render(<App/>,document.getElementById("root"));
+</script>
+</body>
+</html>
